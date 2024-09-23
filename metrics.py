@@ -4,12 +4,14 @@ from sklearn.metrics import mean_squared_error, roc_auc_score
 
 
 def get_rmse(y, y_hat):
+    y = y.detach().cpu().numpy()
+    y_hat = y_hat.detach().cpu().numpy()
     return numpy.sqrt(mean_squared_error(y, y_hat))
 
 
 def get_roc_auc(y, y_hat):
-    y_hat = y_hat.detach().cpu().numpy()
     y = y.detach().cpu().numpy()
+    y_hat = y_hat.detach().cpu().numpy()
     return roc_auc_score(y, y_hat)
 
 
