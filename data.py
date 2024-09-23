@@ -5,7 +5,6 @@ import numpy
 import torch
 from rdkit import Chem
 from rdkit.Chem.Scaffolds import MurckoScaffold
-from sml.scaffold_splitter import ScaffoldSplitter
 from torch.utils.data import Subset
 
 
