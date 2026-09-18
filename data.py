@@ -1,49 +1,46 @@
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
-import numpy
+import numpy as np
 import torch
+
 from rdkit import Chem
 from rdkit.Chem.Scaffolds import MurckoScaffold
 from torch.utils.data import Subset
 
 
 def split_dataset(dataset, frac_train, seed=None, split=None):
-    assert (
-        seed is not None
-    ), "please provide a seed for the splitting for reproducibility"
+    assert (seed is not None), "please provide a seed for the splitting for reproducibility"
 
-    assert split in [
-        "random",
-        "scaffold",
-    ], "split must be either 'random' or 'scaffold' random split provides a completely random split of all molecules in the datasret, while scaffold split provides a split based on the scaffold of the molecules in the dataset. Scaffold splitting is useful when you want to split the dataset based on the chemical similarity of the molecules in the dataset, but note that splitting by scaffold validation data may or may not include 'easier' molecules that the training data."
+    assert split in ["random", "scaffold",], "split must be either 'random' or 'scaffold' random split provides a completely random split of all molecules in the datasret, while scaffold split provides a split based on the scaffold of the molecules in the dataset. Scaffold splitting is useful when you want to split the dataset based on the chemical similarity of the molecules in the dataset, but note that splitting by scaffold validation data may or may not include 'easier' molecules that the training data."
 
     torch.manual_seed(seed)
+    np.random.seed(seed)
 
     if split == "random":
+        g = torch.Generator().manual_seed(seed)
 
         len_train = int(len(dataset) * frac_train)
-        len_val = len(dataset) - len_train
+        len_val = (len(dataset) - len_train) // 2
+        len_test = len(dataset) - len_train - len_val
 
-        train_dataset, val_dataset = torch.utils.data.random_split(
-            dataset, [len_train, len_val]
-        )
-        return train_dataset, val_dataset
+        train_dataset, val_dataset, test_dataset = torch.utils.data.random_split(dataset, [len_train, len_val, len_test], generator=g)
+        return train_dataset, val_dataset, test_dataset
 
     elif split == "scaffold":
         scaffold_splitter = ScaffoldSplitter()
         smiles_list = [data.smiles for data in dataset]
 
-        frac_valid = 1 - frac_train
+        frac_valid = (1 - frac_train)/2
+        frac_test = 1 - frac_train - frac_valid
 
-        train_idxs, valid_idxs = scaffold_splitter.train_valid_split(
-            dataset, smiles_list, frac_train=frac_train, frac_valid=frac_valid
-        )
+        train_idxs, valid_idxs, test_idxs = scaffold_splitter.train_valid_test_split(dataset, smiles_list, frac_train=frac_train, frac_valid=frac_valid, frac_test=frac_test, seed=seed)
 
         train_dataset = Subset(dataset, train_idxs)
         val_dataset = Subset(dataset, valid_idxs)
+        test_dataset = Subset(dataset, test_idxs)
 
-        return train_dataset, val_dataset
+        return train_dataset, val_dataset, test_dataset
 
 
 def filter_dataset(dataset):
@@ -67,9 +64,7 @@ class BaseSplitter(object):
     def _split(self, dataset, **kwargs):
         raise NotImplementedError
 
-    def train_valid_test_split(
-        self, dataset, frac_train=0.8, frac_valid=0.1, frac_test=0.1, **kwargs
-    ):
+    def train_valid_test_split(self, dataset, frac_train=0.8, frac_valid=0.1, frac_test=0.1, **kwargs):
 
         train_inds, valid_inds, test_inds = self._split(
             dataset, frac_train, frac_valid, frac_test, **kwargs
@@ -103,25 +98,25 @@ class ScaffoldSplitter(BaseSplitter):
     """
 
     def _split(self, dataset, frac_train=0.8, frac_valid=0.1, frac_test=0.1, **kwargs):
-        numpy.testing.assert_almost_equal(frac_train + frac_valid + frac_test, 1.0)
+        np.testing.assert_almost_equal(frac_train + frac_valid + frac_test, 1.0)
         seed = kwargs.get("seed", None)
         smiles_list = kwargs.get("smiles_list")
         include_chirality = kwargs.get("include_chirality")
         if len(dataset) != len(smiles_list):
             raise ValueError("The lengths of dataset and smiles_list are " "different")
 
-        rng = numpy.random.RandomState(seed)
+        rng = np.random.RandomState(seed)
 
         scaffolds = defaultdict(list)
         for ind, smiles in enumerate(smiles_list):
             scaffold = generate_scaffold(smiles, include_chirality)
             scaffolds[scaffold].append(ind)
 
-        scaffold_index = rng.permutation(numpy.arange(len(scaffolds.values())))
+        scaffold_index = rng.permutation(np.arange(len(scaffolds.values())))
         scaffold_sets = [i for i in scaffolds.values()]
 
-        n_total_valid = int(numpy.floor(frac_valid * len(dataset)))
-        n_total_test = int(numpy.floor(frac_test * len(dataset)))
+        n_total_valid = int(np.floor(frac_valid * len(dataset)))
+        n_total_test = int(np.floor(frac_test * len(dataset)))
 
         train_index = []
         valid_index = []
@@ -135,11 +130,7 @@ class ScaffoldSplitter(BaseSplitter):
             else:
                 train_index.extend(scaffold_sets[ssi])
 
-        return (
-            numpy.array(train_index),
-            numpy.array(valid_index),
-            numpy.array(test_index),
-        )
+        return (np.array(train_index), np.array(valid_index),np.array(test_index))
 
     def train_valid_test_split(
         self,

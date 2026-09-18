@@ -1,5 +1,6 @@
 import numpy
 import torch
+
 from scipy.stats import pearsonr
 from sklearn.metrics import mean_squared_error, roc_auc_score
 
@@ -17,6 +18,8 @@ def get_auc_roc(y, y_hat):
 
 
 def get_pearson_corr(y, y_hat):
-    y_hat = y_hat.flatten()
-    y = y.flatten()
-    return pearsonr(y_hat, y)
+    y_hat = y_hat.flatten().detach().cpu().numpy()
+    y = y.flatten().detach().cpu().numpy()
+    
+    result = pearsonr(y_hat, y)
+    return result.statistic, result.pvalue
